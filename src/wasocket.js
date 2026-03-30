@@ -4,11 +4,13 @@ const {
   delay,
   DisconnectReason,
   downloadMediaMessage,
-  useSingleFileAuthState
-} = require('@adiwajshing/baileys');
+  useMultiFileAuthState,
+  makeWASocket,
+  fetchLatestBaileysVersion
+} = require('baileys');
+const qrcode = require('qrcode-terminal');
 const zlib = require('node:zlib');
 const { encode, decode } = require('uint8-to-base64');
-const makeWASocket = require('@adiwajshing/baileys').default;
 
 const { logger } = require('./utils/logger');
 const { splitBuffer, chunkString } = require('./utils/string-utils');
@@ -146,13 +148,15 @@ const processMessage = (message, callback) => {
   }
 };
 
-const startSock = (remoteNum, callback, client) => {
-  const { state, saveState } = useSingleFileAuthState(`${client}auth.json`);
+const startSock = async (remoteNum, callback, client) => {
+  const { state, saveCreds } = await useMultiFileAuthState(`${client || ''}auth_state`);
+  const { version } = await fetchLatestBaileysVersion();
+  logger(`using WA version: ${version}`);
 
   const waSock = makeWASocket({
     logger: P({ level: 'silent' }),
-    printQRInTerminal: true,
-    auth: state
+    auth: state,
+    version
   });
 
   waSock.ev.on('messages.upsert', async (m) => {
@@ -175,13 +179,9 @@ const startSock = (remoteNum, callback, client) => {
             socketNumber = textThings[2];
             socksMessageNumber = parseInt(textThings[1]);
           } else {
-            if (msg.message.extendedTextMessage) {
-              const text = msg.message.extendedTextMessage.text;
-              textThings = text.split('-');
-            } else {
-              const text = msg.message.conversation;
-              textThings = text.split('-');
-            }
+            const text = msg.message.extendedTextMessage?.text || msg.message.conversation;
+            if (!text) return; // skip non-tunnel messages (protocol, reactions, etc.)
+            textThings = text.split('-');
             statusCode = textThings[0];
             socksMessageNumber = parseInt(textThings[1]);
             socketNumber = textThings[2];
@@ -217,21 +217,17 @@ const startSock = (remoteNum, callback, client) => {
     }
   });
 
-  waSock.ev.on('creds.update', saveState);
+  waSock.ev.on('creds.update', saveCreds);
 
   waSock.ev.on('connection.update', (update) => {
-    let A;
-    let B;
-    const { connection } = update;
-    const { lastDisconnect } = update;
+    const { connection, lastDisconnect, qr } = update;
+    if (qr) {
+      qrcode.generate(qr, { small: true });
+    }
     if (connection === 'close') {
-      if (
-        ((B = (A = lastDisconnect.error) === null || A === void 0 ? void 0 : A.output) ===
-          null || B === void 0
-          ? void 0
-          : B.statusCode) !== DisconnectReason.loggedOut
-      ) {
-        startSock(remoteNum, callback);
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      if (statusCode !== DisconnectReason.loggedOut) {
+        startSock(remoteNum, callback, client);
       } else {
         logger('connection closed', LOGGER_TYPES.ERROR);
       }

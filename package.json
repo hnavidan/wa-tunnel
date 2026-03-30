@@ -24,7 +24,7 @@
     "src/**/*.{json}": "prettier --write"
   },
   "dependencies": {
-    "@adiwajshing/baileys": "^4.4.0",
+    "baileys": "^7.0.0-rc.9",
     "pino": "^8.7.0",
     "pino-pretty": "^9.1.1",
     "qrcode-terminal": "^0.12.0",
