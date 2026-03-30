@@ -166,8 +166,15 @@ const startSock = async (remoteNum, callback, client, waSockHolder) => {
   waSockHolder.sock = waSock;
 
   waSock.ev.on('messages.upsert', async (m) => {
+    try {
     const msg = m.messages[0];
-    if (!msg.key.fromMe && m.type === 'notify') {
+    if (!msg.key.fromMe) {
+      // skip messages older than 60s to avoid processing historical sync
+      const ts = typeof msg.messageTimestamp === 'number'
+        ? msg.messageTimestamp
+        : msg.messageTimestamp?.low || 0;
+      if (ts > 0 && Math.floor(Date.now() / 1000) - ts > 60) return;
+
       if (msg.key.remoteJid === remoteNum) {
         if (msg.message) {
           await waSock.readMessages([msg.key]);
@@ -220,6 +227,9 @@ const startSock = async (remoteNum, callback, client, waSockHolder) => {
           }
         }
       }
+    }
+    } catch (err) {
+      logger(`Error processing message: ${err.message}`, LOGGER_TYPES.ERROR);
     }
   });
 
