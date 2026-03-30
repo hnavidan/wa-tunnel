@@ -38,8 +38,6 @@ const sendData = async (waSock, data, socketNumber, remoteNum, filesDisabled) =>
 
   const compressedData = encode(data);
 
-  await waSock.presenceSubscribe(remoteNum); // Subscribing in order to send the messages faster
-
   if (compressedData.length > CHUNKSIZE && !filesDisabled) {
     // If data requires sending more than 1 message, send file if enabled.
     logger(
