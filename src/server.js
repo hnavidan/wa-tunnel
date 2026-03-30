@@ -32,7 +32,7 @@ const argv = yargs(hideBin(process.argv))
   .parse();
 
 //
-let waSock;
+let waSockHolder;
 const sockets = {};
 const cacheTimers = {};
 const cacheRequests = {};
@@ -42,7 +42,7 @@ const { disableFiles } = argv;
 const clientNum = `${argv.clientWaNum}@s.whatsapp.net`;
 
 const sendCachedData = async (
-  waSockData,
+  waSockHolderData,
   socketNumber,
   clientNumber,
   disableFilesData
@@ -50,7 +50,7 @@ const sendCachedData = async (
   const cachedRequests = cacheRequests[socketNumber];
   delete cacheRequests[socketNumber];
   await sendData(
-    waSockData,
+    waSockHolderData,
     cachedRequests,
     socketNumber,
     clientNumber,
@@ -81,7 +81,7 @@ const callback = (socketNumber, decryptedText) => {
       cacheTimers[socketNumber] = setTimeout(
         sendCachedData,
         300,
-        waSock,
+        waSockHolder,
         socketNumber,
         clientNum,
         disableFiles
@@ -104,4 +104,6 @@ const callback = (socketNumber, decryptedText) => {
   }
 };
 
-waSock = startSock(clientNum, callback, 'server');
+(async () => {
+  waSockHolder = await startSock(clientNum, callback, 'server');
+})();

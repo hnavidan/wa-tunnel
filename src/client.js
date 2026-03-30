@@ -47,35 +47,37 @@ const callback = (socketNumber, decryptedText) => {
   }
 };
 
-const waSock = startSock(remoteNum, callback, 'client');
+(async () => {
+  const waSockHolder = await startSock(remoteNum, callback, 'client');
 
-const sockFunc = (sock) => {
-  logger(`CONNECTED -> ${sock.remotePort}`);
+  const sockFunc = (sock) => {
+    logger(`CONNECTED -> ${sock.remotePort}`);
 
-  sockets[sock.remotePort] = sock;
+    sockets[sock.remotePort] = sock;
 
-  logger(`ACTIVE SOCKETS -> ${Object.keys(sockets)}`);
+    logger(`ACTIVE SOCKETS -> ${Object.keys(sockets)}`);
 
-  sock.on('data', async (data) => {
-    sock.pause();
-    await sendData(waSock, data, sock.remotePort, remoteNum, disableFiles);
-    sock.resume();
+    sock.on('data', async (data) => {
+      sock.pause();
+      await sendData(waSockHolder, data, sock.remotePort, remoteNum, disableFiles);
+      sock.resume();
+    });
+
+    sock.on('close', () => {
+      delete sockets[sock.remotePort];
+      logger(`CLOSED -> ${sock.remotePort}`);
+    });
+
+    sock.on('error', (e) => {
+      logger(`ERROR SOCKET -> ${sock.remotePort}`, LOGGER_TYPES.ERROR);
+      logger(e.stack, LOGGER_TYPES.ERROR);
+      sock.end();
+      delete sockets[sock.remotePort];
+    });
+  };
+
+  server.listen(localport, host, () => {
+    logger(`TCP Server is running on port ${localport}.`);
   });
-
-  sock.on('close', () => {
-    delete sockets[sock.remotePort];
-    logger(`CLOSED -> ${sock.remotePort}`);
-  });
-
-  sock.on('error', (e) => {
-    logger(`ERROR SOCKET -> ${sock.remotePort}`, LOGGER_TYPES.ERROR);
-    logger(e.stack, LOGGER_TYPES.ERROR);
-    sock.end();
-    delete sockets[sock.remotePort];
-  });
-};
-
-server.listen(localport, host, () => {
-  logger(`TCP Server is running on port ${localport}.`);
-});
-server.on('connection', sockFunc);
+  server.on('connection', sockFunc);
+})();

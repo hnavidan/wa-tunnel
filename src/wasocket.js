@@ -31,7 +31,13 @@ class Message {
   }
 }
 
-const sendData = async (waSock, data, socketNumber, remoteNum, filesDisabled) => {
+const sendData = async (waSockHolder, data, socketNumber, remoteNum, filesDisabled) => {
+  const waSock = waSockHolder.sock;
+  if (!waSock || typeof waSock.sendMessage !== 'function') {
+    logger('Socket not ready, dropping message', LOGGER_TYPES.ERROR);
+    return;
+  }
+
   if (!socksNumber[socketNumber]) {
     socksNumber[socketNumber] = 0;
   }
@@ -146,7 +152,8 @@ const processMessage = (message, callback) => {
   }
 };
 
-const startSock = async (remoteNum, callback, client) => {
+const startSock = async (remoteNum, callback, client, waSockHolder) => {
+  if (!waSockHolder) waSockHolder = { sock: null };
   const { state, saveCreds } = await useMultiFileAuthState(`${client || ''}auth_state`);
   const { version } = await fetchLatestBaileysVersion();
   logger(`using WA version: ${version}`);
@@ -156,6 +163,7 @@ const startSock = async (remoteNum, callback, client) => {
     auth: state,
     version
   });
+  waSockHolder.sock = waSock;
 
   waSock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0];
@@ -225,14 +233,14 @@ const startSock = async (remoteNum, callback, client) => {
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       if (statusCode !== DisconnectReason.loggedOut) {
-        startSock(remoteNum, callback, client);
+        startSock(remoteNum, callback, client, waSockHolder);
       } else {
         logger('connection closed', LOGGER_TYPES.ERROR);
       }
     }
     logger(`connection update ${JSON.stringify(update)}`);
   });
-  return waSock;
+  return waSockHolder;
 };
 
 exports.startSock = startSock;
