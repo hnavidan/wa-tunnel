@@ -101,8 +101,9 @@ const processMessage = (message, callback) => {
     logger(`BUFFERING [${socksMessageNumber}] -> ${socketNumber}`);
     if (buffer[socketNumber]) {
       buffer[socketNumber] += dataPayload;
+    } else {
+      buffer[socketNumber] = dataPayload;
     }
-    buffer[socketNumber] = dataPayload;
   } else {
     let multi;
     let decryptedText;
