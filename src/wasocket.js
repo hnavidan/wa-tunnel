@@ -16,6 +16,18 @@ const { logger } = require('./utils/logger');
 const { splitBuffer, chunkString } = require('./utils/string-utils');
 const { STATUS_CODES, LOGGER_TYPES, CHUNKSIZE, DELIMITER } = require('./constants');
 
+// Suppress noisy libsignal session logs
+const origConsoleInfo = console.info;
+const origConsoleWarn = console.warn;
+console.info = (...args) => {
+  if (typeof args[0] === 'string' && args[0].startsWith('Closing session')) return;
+  origConsoleInfo.apply(console, args);
+};
+console.warn = (...args) => {
+  if (typeof args[0] === 'string' && args[0].startsWith('Closing open session')) return;
+  origConsoleWarn.apply(console, args);
+};
+
 const buffer = {};
 const socksNumber = {};
 const lastBufferNum = {};
@@ -47,7 +59,7 @@ const sendData = async (waSockHolder, data, socketNumber, remoteNum, filesDisabl
   if (compressedData.length > CHUNKSIZE && !filesDisabled) {
     // If data requires sending more than 1 message, send file if enabled.
     logger(
-      `SENDING FILE [${socksNumber[socketNumber]}][${compressedData.length}] -> ${socketNumber}`
+      `TX FILE [${compressedData.length}B] -> ${socketNumber}`
     );
 
     socksNumber[socketNumber] += 1;
@@ -61,12 +73,9 @@ const sendData = async (waSockHolder, data, socketNumber, remoteNum, filesDisabl
     let statusCode;
     const chunks = chunkString(compressedData, CHUNKSIZE); // Splitting string to not get timeout or connection close from Whatsapp.
 
+    logger(`TX [${chunks.length} chunk(s), ${compressedData.length}B] -> ${socketNumber}`);
+
     for (const [index, chunk] of chunks.entries()) {
-      logger(
-        `SENDING [${socksNumber[socketNumber]}][${index + 1}/${chunks.length}][${
-          chunk.length
-        }] -> ${socketNumber}`
-      );
 
       if (chunks.length > 1 && index < chunks.length - 1) {
         statusCode = STATUS_CODES.CACHE;
@@ -95,10 +104,7 @@ const processMessage = (message, callback) => {
   const { dataPayload } = message;
   const { socksMessageNumber } = message;
 
-  logger(`PROCESSING [${socksMessageNumber}] -> ${socketNumber}`);
-
   if (statusCode === STATUS_CODES.CACHE) {
-    logger(`BUFFERING [${socksMessageNumber}] -> ${socketNumber}`);
     if (buffer[socketNumber]) {
       buffer[socketNumber] += dataPayload;
     } else {
@@ -109,7 +115,6 @@ const processMessage = (message, callback) => {
     let decryptedText;
 
     if (statusCode === STATUS_CODES.END) {
-      logger(`CLEARING BUFFER [${socksMessageNumber}] -> ${socketNumber}`);
       decryptedText = decode(buffer[socketNumber] + dataPayload);
       delete buffer[socketNumber];
       multi = true; // use indexOfmulti to split buffer when --disable-files enabled
@@ -127,7 +132,7 @@ const processMessage = (message, callback) => {
 
     const messages = splitBuffer(decryptedText, DELIMITER, multi);
 
-    logger(`RECIEVING [${messages.length}] MESSAGES -> ${socketNumber}`);
+    logger(`RX [${messages.length} msg(s), ${decryptedText.length}B] -> ${socketNumber}`);
 
     for (const messageItem of messages) {
       callback(socketNumber, messageItem);
@@ -137,12 +142,7 @@ const processMessage = (message, callback) => {
   lastBufferNum[socketNumber] = socksMessageNumber;
   const sockBuffer = messagesBuffer[socketNumber];
 
-  logger(`CHECKING BUFFER [${socksMessageNumber}] -> ${socketNumber}`);
-
   if (sockBuffer && sockBuffer.length > 0) {
-    logger(
-      `MESSAGES IN BUFFER [${sockBuffer.length}][${socksMessageNumber}] -> ${socketNumber}`
-    );
     if (sockBuffer.length > 1) {
       sockBuffer.sort((a, b) => a.socksMessageNumber - b.socksMessageNumber); // check if sorted is also changed and saved to messagesbuffer or not
     }
@@ -209,16 +209,12 @@ const startSock = async (remoteNum, callback, client, waSockHolder) => {
             dataPayload
           );
 
-          logger(`RECIEVING [${socksMessageNumber}] -> ${socketNumber}`);
-
           // Buffering mechanism added in case messages not recieved in the correct order.
           const lastSockMessageNumber = lastBufferNum[socketNumber];
           if (
             (lastSockMessageNumber && socksMessageNumber > lastSockMessageNumber + 1) ||
             (!lastSockMessageNumber && socksMessageNumber !== 1)
           ) {
-            logger(`BUFFERING MESSAGE [${socksMessageNumber}] -> ${socketNumber}`);
-
             if (!messagesBuffer[socketNumber]) {
               messagesBuffer[socketNumber] = [];
             }
@@ -249,7 +245,9 @@ const startSock = async (remoteNum, callback, client, waSockHolder) => {
         logger('connection closed', LOGGER_TYPES.ERROR);
       }
     }
-    logger(`connection update ${JSON.stringify(update)}`);
+    if (connection) {
+      logger(`connection: ${connection}`);
+    }
   });
   return waSockHolder;
 };
